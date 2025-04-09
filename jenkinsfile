@@ -1,0 +1,72 @@
+pipeline {
+    agent any
+    
+    stages {
+        stage('Prepare') {
+            steps {
+                echo "Підготовка до розгортання"
+                sh 'mkdir -p reports'
+            }
+        }
+        
+        stage('Install Apache') {
+            steps {
+                echo "Встановлення Apache"
+                sh '''
+                    sudo apt update
+                    sudo apt install -y apache2
+                '''
+            }
+        }
+        
+        stage('Configure Apache') {
+            steps {
+                echo "Налаштування Apache"
+                sh '''
+                    sudo cp /etc/apache2/apache2.conf /etc/apache2/apache2.conf.backup
+                    echo '<html><body><h1>Deployed by Jenkins</h1></body></html>' | sudo tee /var/www/html/index.html
+                '''
+            }
+        }
+        
+        stage('Start Service') {
+            steps {
+                echo "Запуск Apache"
+                sh '''
+                    sudo systemctl start apache2
+                    sudo systemctl enable apache2
+                '''
+            }
+        }
+        
+        stage('Check Status') {
+            steps {
+                echo "Перевірка статусу Apache"
+                sh 'sudo systemctl status apache2'
+            }
+        }
+        
+        stage('Check Logs for Errors') {
+            steps {
+                echo "Перевірка логів на помилки"
+                sh '''
+                    echo "Перевірка логів на помилки 4xx:" > reports/errors.txt
+                    grep -E " 4[0-9]{2} " /var/log/apache2/access.log >> reports/errors.txt || echo "Помилок 4xx не знайдено" >> reports/errors.txt
+                    
+                    echo "Перевірка логів на помилки 5xx:" >> reports/errors.txt
+                    grep -E " 5[0-9]{2} " /var/log/apache2/access.log >> reports/errors.txt || echo "Помилок 5xx не знайдено" >> reports/errors.txt
+                '''
+                archiveArtifacts artifacts: 'reports/*', fingerprint: true
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "Розгортання успішно завершено!"
+        }
+        failure {
+            echo "Розгортання завершилось з помилкою!"
+        }
+    }
+}
